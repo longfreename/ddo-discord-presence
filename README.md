@@ -1,8 +1,9 @@
 # DDO Discord Presence
 
-> **This plugin is for Dungeon Helper 4.**
+> **This plugin is for [Dungeon Helper](https://dungeonhelper.com/) 4.** It is a community add-on that exists
+> only because of the Dungeon Helper team's work. See [Credits](#credits).
 
-A Dungeon Helper plugin by **longfreename** that shows what you are doing in Dungeons & Dragons Online as your
+A [Dungeon Helper](https://dungeonhelper.com/) plugin by **longfreename** that shows what you are doing in Dungeons & Dragons Online as your
 Discord status:
 
 ```
@@ -136,6 +137,22 @@ one quest keeps it. Names that cannot be read cleanly are never sent.
 
 `win-x64\DdoDiscordPresence.dll` and `.deps.json` (the plugin), `README.md`, `INSTALL.txt`, `TERMS.md`,
 `PRIVACY.md`. Dungeon Helper provides everything else the plugin needs.
+
+## Credits
+
+All of the hard part is **[Dungeon Helper](https://dungeonhelper.com/)**. The Dungeon Helper team built and
+maintains the application, the plugin host and the plugin SDK (`VoK.Sdk`) that let an add-on like this read
+what is happening in the game at all, and they give it to the DDO community for free. This plugin is a thin
+layer on top of their work: it takes what Dungeon Helper already knows and passes a line of text to Discord.
+
+- Get Dungeon Helper, and its own plugins (Awesome AF, Mapster, Scooper, Trove and more), at
+  <https://dungeonhelper.com/>.
+- Their community Discord is linked from that site. Please ask them about Dungeon Helper itself, and
+  ask here about this plugin: it is not theirs, and they are not responsible for supporting it.
+
+Thank you to the Dungeon Helper team for the years of work behind it.
+
+Dungeon Helper is not affiliated with this plugin and has not reviewed or endorsed it; see [TERMS.md](TERMS.md).
 
 ## License
 
