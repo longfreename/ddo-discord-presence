@@ -54,6 +54,16 @@ namespace DdoDiscordPresence
         private ThrottledLog _log;
         private GameSnapshot _snapshot = GameSnapshot.LoggedOut;
         private GameDiagnostics _diag = new GameDiagnostics();
+        // The difficulty the quest entry panel named. Kept until the character has been in a quest and left it.
+        private uint? _portalDifficulty;
+        private bool _portalBound;
+        private string _lastReadingLine = "";
+        // What the monsters said for the instance the character is in, kept while no monster is in sight.
+        private string? _knownPlace;
+        private Difficulty _knownDifficulty;
+        private bool _knownCertain;
+        private bool? _knownEpic;
+        private bool _entryLoadTried;
         private NodeView _view = new NodeView();
         private DateTime? _lastAreaChangeUtc;
         private DateTime _lastReadUtc = DateTime.MinValue;
@@ -113,6 +123,9 @@ namespace DdoDiscordPresence
                     TryAdd(() => ev.OnLogout.AddHandler(() => { OnLogout(); return Task.CompletedTask; }));
                     TryAdd(() => ev.OnMapAreaChange.AddHandler(_ => { OnMapAreaChange(); return Task.CompletedTask; }));
                     TryAdd(() => ev.OnLevelup.AddHandler(_ => { RequestRead(AreaSettle); return Task.CompletedTask; }));
+                    TryAdd(() => ev.OnPortalActivate.AddHandler(i => { OnPortal("open", i); return Task.CompletedTask; }));
+                    TryAdd(() => ev.OnPortalActivateReadOnly.AddHandler(i => { OnPortal("open (read only)", i); return Task.CompletedTask; }));
+                    TryAdd(() => ev.OnPortalClose.AddHandler(i => { OnPortal("close", i); return Task.CompletedTask; }));
                 }
 
                 // Dungeon Helper can start after login.
@@ -176,6 +189,68 @@ namespace DdoDiscordPresence
             RunNode();
         }
 
+        /// <summary>The quest entry panel: it is the one place the game names the difficulty of the instance.</summary>
+        private void OnPortal(string what, VoK.Sdk.Ddo.IPortalInfo? info)
+        {
+            if (_terminated || info == null) return;
+            uint? named = null; uint? instance = null; int quests = 0; bool bestowed = false;
+            try { named = info.QuestGenericDifficulty; } catch { }
+            try { instance = info.ActiveInstanceDid; } catch { }
+            try { quests = info.AvailableQuests?.Count ?? 0; } catch { }
+            try { bestowed = info.QuestBestowed; } catch { }
+            Log.Info($"Quest entry panel {what}: difficulty property={(named.HasValue ? "0x" + named.Value.ToString("X8") : "-")} " +
+                     $"({(named.HasValue ? DifficultyMap.FromDifficultyProperty(named.Value).ToString() : "-")}) " +
+                     $"instance={(instance.HasValue ? "0x" + instance.Value.ToString("X8") : "-")} quests={quests} bestowed={bestowed}");
+            if (named.HasValue && DifficultyMap.FromDifficultyProperty(named.Value) != Difficulty.Unknown)
+            {
+                lock (_lock) { _portalDifficulty = named; _portalBound = false; }
+                RequestRead(AreaSettle);
+            }
+        }
+
+        // What the entry panel said for the quest a character is in, kept in the plugin's folder so that a Dungeon
+        // Helper restart in the middle of a run does not lose the difficulty. One tiny file per character:
+        // "<quest id> <difficulty property> <UTC ticks>". Ignored after six hours or for any other quest.
+        private static readonly TimeSpan EntryMaxAge = TimeSpan.FromHours(6);
+
+        private string? EntryPath(ulong characterId) =>
+            characterId == 0 || string.IsNullOrEmpty(Folder) ? null : Path.Combine(Folder, "DdoDiscordPresence.entry." + characterId.ToString("X16") + ".txt");
+
+        private void SaveEntry(ulong characterId, uint questDid, uint difficultyProperty)
+        {
+            try
+            {
+                var path = EntryPath(characterId);
+                if (path == null || questDid == 0) return;
+                File.WriteAllText(path, questDid.ToString("X8") + " " + difficultyProperty.ToString("X8") + " " +
+                                        DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            catch { }
+        }
+
+        private uint? LoadEntry(ulong characterId, uint questDid)
+        {
+            try
+            {
+                var path = EntryPath(characterId);
+                if (path == null || questDid == 0 || !File.Exists(path)) return null;
+                var parts = File.ReadAllText(path).Split(' ');
+                if (parts.Length != 3) return null;
+                var quest = Convert.ToUInt32(parts[0], 16);
+                var prop = Convert.ToUInt32(parts[1], 16);
+                var at = new DateTime(long.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture), DateTimeKind.Utc);
+                var age = DateTime.UtcNow - at;
+                if (quest != questDid || age < TimeSpan.Zero || age > EntryMaxAge) return null;
+                return DifficultyMap.FromDifficultyProperty(prop) == Difficulty.Unknown ? (uint?)null : prop;
+            }
+            catch { return null; }
+        }
+
+        private void ForgetEntry(ulong characterId)
+        {
+            try { var path = EntryPath(characterId); if (path != null && File.Exists(path)) File.Delete(path); } catch { }
+        }
+
         private void OnMapAreaChange()
         {
             lock (_lock) _lastAreaChangeUtc = DateTime.UtcNow;
@@ -203,13 +278,59 @@ namespace DdoDiscordPresence
                 lock (_lock) read = _forceRead || now - _lastReadUtc >= ReadInterval;
                 if (read)
                 {
-                    var (snap, diag) = GameReader.Read(_provider);
+                    uint? portal;
+                    lock (_lock) portal = _portalDifficulty;
+                    var (snap, diag) = GameReader.Read(_provider, portal);
+                    // Dungeon Helper restarted inside a quest: take back what the entry panel said for this run.
+                    if (snap.InQuest && !portal.HasValue && !_entryLoadTried)
+                    {
+                        _entryLoadTried = true;
+                        var saved = LoadEntry(diag.CharacterId, snap.InstanceQuestDid);
+                        if (saved.HasValue)
+                        {
+                            lock (_lock) { _portalDifficulty = saved; _portalBound = true; }
+                            portal = saved;
+                            (snap, diag) = GameReader.Read(_provider, portal);
+                        }
+                    }
+                    else if (snap.LoggedIn && !snap.InQuest) _entryLoadTried = false;
+                    // Remember the monsters' verdict for this quest: rooms without monsters must not blank it.
+                    if (snap.InQuest)
+                    {
+                        if (_knownPlace != snap.PlaceKey) { _knownPlace = snap.PlaceKey; _knownDifficulty = Difficulty.Unknown; _knownCertain = false; _knownEpic = null; }
+                        if (snap.EpicSide.HasValue) _knownEpic = snap.EpicSide;
+                        else if (_knownEpic.HasValue) snap = snap with { EpicSide = _knownEpic };
+                        if (diag.MonsterDifficulty != Difficulty.Unknown && (diag.MonsterDifficultyCertain || !_knownCertain))
+                        { _knownDifficulty = diag.MonsterDifficulty; _knownCertain = diag.MonsterDifficultyCertain; }
+                        if (snap.Difficulty == Difficulty.Unknown && _knownDifficulty != Difficulty.Unknown)
+                            snap = snap with { Difficulty = _knownDifficulty };
+                        else if (snap.Difficulty != Difficulty.Reaper && _knownCertain && snap.Difficulty != _knownDifficulty)
+                            snap = snap with { Difficulty = _knownDifficulty };
+                    }
+                    else _knownPlace = null;
+                    var line = $"quest={(snap.InQuest ? snap.QuestName ?? "?" : "-")} shown difficulty={snap.Difficulty} " +
+                               $"side={(snap.EpicSide == null ? "-" : snap.EpicSide == true ? "epic" : "heroic")} " +
+                               $"levels={snap.QuestLevelHeroic?.ToString() ?? "-"}/{snap.QuestLevelEpic?.ToString() ?? "-"} " +
+                               $"source={diag.DifficultySource} reaper={diag.ReaperRaw?.ToString() ?? "-"} " +
+                               $"entry panel={(diag.PortalDifficulty.HasValue ? "0x" + diag.PortalDifficulty.Value.ToString("X8") : "-")} " +
+                               $"monsters={diag.MonsterDifficulty}{(diag.MonsterDifficultyCertain ? "" : "?")}";
+                    if (line != _lastReadingLine) { _lastReadingLine = line; Log.Info("Difficulty reading: " + line); }
                     lock (_lock)
                     {
                         if (_timer == null) return;       // logged out meanwhile
                         _forceRead = false;
                         _lastReadUtc = now;
                         _diag = diag;
+                        if (snap.InQuest && portal.HasValue)
+                        {
+                            if (!_portalBound) SaveEntry(diag.CharacterId, snap.InstanceQuestDid, portal.Value);
+                            _portalBound = true;
+                        }
+                        else if (snap.LoggedIn && !snap.InQuest && _portalBound)
+                        {
+                            _portalDifficulty = null; _portalBound = false;
+                            ForgetEntry(diag.CharacterId);
+                        }
                         // While a zone loads the map reports area 0: keep the last place instead of flickering.
                         if (snap.LoggedIn && snap.AreaDid == 0 && !snap.InQuest && _snapshot.LoggedIn) { }
                         else if (snap.LoggedIn)

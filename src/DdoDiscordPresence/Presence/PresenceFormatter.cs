@@ -110,7 +110,10 @@ namespace DdoDiscordPresence.Presence
             if (place == null)
                 return None(game.InQuest ? "The quest's name is not readable yet" : "The area's name is not readable yet");
 
-            var diff = game.InQuest && config.ShowDifficulty ? DifficultyText(game.Difficulty, game.ReaperSkulls) : null;
+            var core = game.InQuest && config.ShowDifficulty ? DifficultyText(game.Difficulty, game.ReaperSkulls) : null;
+            var (tier, questLevel) = game.InQuest && config.ShowDifficulty ? TierAndLevel(game) : (null, null);
+            var diff = TierDifficultyText(tier, core, questLevel, false);
+            var diffLong = TierDifficultyText(tier, core, questLevel, true);
             string? badge = diff != null && config.ShowDifficultyBadge ? BadgeKey(game.Difficulty) : null;
             var cls = CleanText(game.ClassName);
             return new Contribution
@@ -131,7 +134,7 @@ namespace DdoDiscordPresence.Presence
                 Difficulty = diff,
                 Party = config.ShowPartySize && game.PartySize is int size && size >= 2 && size <= 12 ? $"Party of {size.ToString(CultureInfo.InvariantCulture)}" : null,
                 BadgeKey = badge,
-                BadgeText = badge != null ? Fit(diff) : null,
+                BadgeText = badge != null ? Fit(diffLong) : null,
             };
         }
 
@@ -256,6 +259,28 @@ namespace DdoDiscordPresence.Presence
             Presence.Difficulty.Reaper => skulls is int s && s >= 1 && s <= 10 ? "Reaper " + s.ToString(CultureInfo.InvariantCulture) : "Reaper",
             _ => null,
         };
+
+        /// <summary>The epic-side base level from which a quest is called Legendary instead of Epic.</summary>
+        public const int LegendaryFromLevel = 30;
+
+        /// <summary>"Heroic", "Epic" or "Legendary" with the quest's base level on that side; nulls when the side is unknown.</summary>
+        public static (string? Tier, int? Level) TierAndLevel(GameSnapshot game)
+        {
+            if (game.EpicSide == null) return (null, null);
+            if (game.EpicSide == false) return ("Heroic", game.QuestLevelHeroic);
+            var level = game.QuestLevelEpic;
+            return (level is int l && l >= LegendaryFromLevel ? "Legendary" : "Epic", level);
+        }
+
+        /// <summary>"Heroic Elite (L10)"; the long form for the badge is "Heroic Elite, quest level 10". Any part may be missing.</summary>
+        public static string? TierDifficultyText(string? tier, string? difficulty, int? questLevel, bool longForm)
+        {
+            var name = string.Join(" ", new[] { tier, difficulty }.Where(p => !string.IsNullOrEmpty(p)));
+            if (name.Length == 0) return null;
+            if (questLevel is not int l) return name;
+            var n = l.ToString(CultureInfo.InvariantCulture);
+            return longForm ? name + ", quest level " + n : name + " (L" + n + ")";
+        }
 
         public static string? BadgeKey(Difficulty d) => d switch
         {

@@ -9,7 +9,7 @@ Discord status:
 ```
 Playing DDO
 The Sharn Syndicate
-Level 15 Paladin · Elite · Party of 4
+Level 15 Paladin · Heroic Elite (L12) · Party of 4
 00:07 elapsed
 ```
 
@@ -50,7 +50,7 @@ never changes them.
 | Pause sharing | off | clears your status immediately and keeps it clear |
 | Quest names | on | off: "In a quest" |
 | Town, public area and wilderness names | on | off: "In town" / "In a public area" |
-| Quest difficulty | on | "Casual", "Normal", "Hard", "Elite", "Reaper 3" (in quests, when the game reports it) |
+| Quest difficulty | on | the tier, the difficulty and the quest's level: "Heroic Elite (L10)", "Epic Hard (L24)", "Legendary Reaper 3 (L31)". Any part the game does not report is left out |
 | Difficulty badge on the picture | on | a small difficulty badge on the corner of the picture |
 | Character level and class | on | "Level 15 Paladin" |
 | Show my character's name | **off** | your character's name; when multi-boxing, every sharing character's name |
@@ -105,7 +105,11 @@ class, then difficulty.
   and not one as administrator while the other is not. The plugin retries after 5 s, 15 s, then every minute.
 - **Connected, but nothing on my profile:** check *Share your detected activities with others* in Discord's Activity
   Privacy settings, and that you are looking at the account named in the status line.
-- **No difficulty shown:** the plugin only shows the difficulty when the game reports it; otherwise it is left out.
+- **No difficulty shown:** the difficulty is read when you choose it at the quest's entrance, and from the monsters
+  once one is near you. If Dungeon Helper was started after you were already inside a quest that has no monsters
+  nearby, it stays blank until you meet one. Reaper skulls are always read directly.
+- **"Normal" on a Casual run:** in many quests Casual and Normal use the same monsters, so when the entrance was not
+  seen the plugin cannot tell them apart and says Normal.
 - The Dungeon Helper log has the plugin's lines under `DdoDiscordPresence` (each message at most once a minute).
 
 ## How the quest and area are detected
@@ -117,7 +121,10 @@ Read through Dungeon Helper every 5 seconds while a character is logged in, and 
 | inside a quest | not in a peaceful zone (`InTown()` false) and the instance names a quest (`GetInstanceQuestDid()`) | medium; the client keeps the last quest after you leave, so the town check decides |
 | quest name | the instance quest's name from the game's own data | high |
 | area name | the current map area's name from the game's own data | medium |
-| difficulty, reaper skulls | the instance's properties | **unverified**; left out when not readable |
+| reaper skulls | the character's reaper level for the current instance | high (seen as 1 in a Reaper 1 run and 0 in an Elite run) |
+| difficulty | what the quest's entrance reports when you choose, and which of its per-difficulty records each monster near you is | high for Hard and Elite (seen in play); Casual and Normal can share monsters; Solo and the Epic difficulties not yet seen in play |
+| Heroic / Epic / Legendary | the same two sources say which side of the quest you are on; "Legendary" when the epic side's level is 30 or more | Heroic seen in play; Epic and Legendary not yet |
+| quest level | the quest's own base level for that side, from the game's data | high |
 | level | the character's total level | high (checked at level 15) |
 | class | the Who panel's class list | medium; may be empty, then only the level is shown |
 | party size | the party list plus you | medium |
@@ -130,7 +137,9 @@ one quest keeps it. Names that cannot be read cleanly are never sent.
 - **Multi-boxing in a real session.** The coordination was tested with several plugin instances in one process and
   with two real processes, but not with several real game clients in Dungeon Helper.
 - **Which window counts as "in front"** (the game window handle against the foreground window) in real play.
-- **Difficulty and reaper skulls**, class names, party counts with hirelings, levels above 20.
+- **Epic and Legendary runs, Casual and Solo**: the difficulty reading was checked in play on Heroic Hard, Heroic
+  Elite and Reaper 1 only.
+- Class names, party counts with hirelings.
 - **The first-run panel inside Dungeon Helper** (it was rendered in a test harness).
 
 ## Files in the zip

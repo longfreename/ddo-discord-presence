@@ -36,6 +36,11 @@ namespace DdoDiscordPresence.Presence
         public int? PartySize { get; init; }
         public Difficulty Difficulty { get; init; }
         public int? ReaperSkulls { get; init; }
+        /// <summary>True on the quest's epic side (Epic or Legendary), false on the heroic side, null when unknown.</summary>
+        public bool? EpicSide { get; init; }
+        /// <summary>The quest's base level on its heroic side (Quest_CR_Normal) and its epic side (Quest_CR_Epic).</summary>
+        public int? QuestLevelHeroic { get; init; }
+        public int? QuestLevelEpic { get; init; }
         /// <summary>When the character entered the current quest (or public area).</summary>
         public DateTime PlaceSinceUtc { get; init; }
 

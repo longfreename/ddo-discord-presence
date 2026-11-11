@@ -50,6 +50,16 @@ One settings file beside the plugin on your computer (`DdoDiscordPresence.json`)
 of hidden places. It contains no passwords and no Discord token. Dungeon Helper's log may contain the plugin's
 status lines.
 
+While a character is inside a quest, one more small file sits beside it (`DdoDiscordPresence.entry.<id>.txt`): the
+game's number for that quest, the difficulty you chose, and the time. It only exists so that restarting Dungeon
+Helper in the middle of a quest does not lose the difficulty; it is removed when you leave the quest and ignored
+after six hours. The `<id>` in its name is the game's own number for your character. Nothing in it is sent anywhere.
+
+While a character is inside a quest, one more small file sits beside it (`DdoDiscordPresence.entry.<id>.txt`): the
+game's number for that quest, the difficulty you chose, and the time. It only exists so that restarting Dungeon
+Helper in the middle of a quest does not lose the difficulty; it is removed when you leave the quest and ignored
+after six hours. The `<id>` in its name is the game's own number for your character. Nothing in it is sent anywhere.
+
 While a character is logged in, the plugin also keeps one small file per game client in your Windows temporary
 folder (`%TEMP%\DdoDiscordPresence`), so that several game clients on the same PC show one combined status. It
 holds only what that client would show (the place text, and the character name only if you turned the name on)

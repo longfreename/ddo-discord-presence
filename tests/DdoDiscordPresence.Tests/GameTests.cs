@@ -50,7 +50,7 @@ namespace DdoDiscordPresence.Tests
             var (snap, diag) = GameReader.Read(g.Provider());
             Assert.Equal(Difficulty.Reaper, snap.Difficulty, "reaper");
             Assert.Equal(4, snap.ReaperSkulls, "skulls");
-            Assert.Equal("volume", diag.DifficultySource, "source");
+            Assert.Equal("reaper level", diag.DifficultySource, "source");
             g.VolumeDifficulty = 204;   // "Blank": not a quest difficulty
             Assert.Equal(Difficulty.Reaper, GameReader.Read(g.Provider()).Snapshot.Difficulty, "a reaper level decides on its own");
             g.VolumeReaper = 0;
@@ -80,6 +80,38 @@ namespace DdoDiscordPresence.Tests
             Assert.Equal((Difficulty.Reaper, (int?)null), DifficultyMap.Resolve(268477892u, null, 11), "skulls out of range are left out");
             Assert.Equal((Difficulty.Hard, (int?)null), DifficultyMap.Resolve(null, 2, null), "falls back to the DifficultyType number");
             Assert.Equal((Difficulty.Unknown, (int?)null), DifficultyMap.Resolve(12345u, null, null), "unknown stays unknown");
+            // Seen live 2026-11-11, Heroic Elite: a wolf whose record id is its Dungeon_HardDifficulty row.
+            var wolf = new System.Collections.Generic.Dictionary<uint, uint> { [268453728u] = 1879242525, [268460946u] = 1879242527, [268460947u] = 1879242530, [268460948u] = 1879242525,
+                [268454990u] = 1879242534, [268442564u] = 1879242539, [268442566u] = 1879242534, [268442567u] = 1879242529, [268446866u] = 1879050194 };
+            (uint, System.Collections.Generic.IReadOnlyDictionary<uint, uint>) M(uint id) => (id, wolf);
+            Assert.Equal((Difficulty.Elite, true), DifficultyMap.FromMonsterVariants(new[] { M(1879242529) }), "Hard row is Elite");
+            Assert.Equal((Difficulty.Hard, true), DifficultyMap.FromMonsterVariants(new[] { M(1879242539) }), "Medium row is Hard");
+            Assert.Equal((Difficulty.Elite, true), DifficultyMap.FromMonsterVariants(new[] { M(1879242527) }), "Epic Elite row");
+            Assert.Equal((Difficulty.Normal, false), DifficultyMap.FromMonsterVariants(new[] { M(1879242534) }), "Casual and Normal share a record: Normal, uncertain");
+            Assert.Equal((Difficulty.Unknown, false), DifficultyMap.FromMonsterVariants(new[] { M(42) }), "no row matches");
+            Assert.Equal((Difficulty.Elite, true), DifficultyMap.FromMonsterVariants(new[] { M(1879242534), M(1879242529), M(1879242529) }), "certain votes win");
+            Assert.Equal((Difficulty.Reaper, (int?)1), DifficultyMap.Decide(null, null, 1, Difficulty.Elite, true), "reaper level first");
+            Assert.Equal((Difficulty.Elite, (int?)null), DifficultyMap.Decide(null, null, 0, Difficulty.Elite, true), "monsters with no entry panel");
+            Assert.Equal((Difficulty.Elite, (int?)null), DifficultyMap.Decide(268442566u, null, 0, Difficulty.Elite, true), "certain monsters beat the panel");
+            Assert.Equal((Difficulty.Casual, (int?)null), DifficultyMap.Decide(268454990u, null, 0, Difficulty.Normal, false), "the panel settles Casual against an uncertain Normal");
+            Assert.Equal((Difficulty.Normal, (int?)null), DifficultyMap.Decide(null, null, 0, Difficulty.Normal, false), "uncertain monsters when nothing else");
+            Assert.Equal((Difficulty.Unknown, (int?)null), DifficultyMap.Decide(null, null, null, Difficulty.Unknown, false), "nothing known: nothing shown");
+            Assert.Equal((bool?)false, DifficultyMap.EpicSideFromMonsters(new[] { M(1879242529) }), "a heroic row: heroic side");
+            Assert.Equal((bool?)true, DifficultyMap.EpicSideFromMonsters(new[] { M(1879242527) }), "an epic row: epic side");
+            Assert.Equal((bool?)null, DifficultyMap.EpicSideFromMonsters(new[] { M(42) }), "no row: unknown");
+            Assert.Equal((bool?)false, DifficultyMap.IsEpicProperty(0x10001BC7u), "the entry panel value seen for Heroic Elite");
+            Assert.Equal((bool?)true, DifficultyMap.IsEpicProperty(268460946u), "Epic Elite");
+            var gs = new GameSnapshot { EpicSide = false, QuestLevelHeroic = 10, QuestLevelEpic = 31 };
+            Assert.Equal(("Heroic", (int?)10), PresenceFormatter.TierAndLevel(gs), "heroic side and its level");
+            Assert.Equal(("Legendary", (int?)31), PresenceFormatter.TierAndLevel(gs with { EpicSide = true }), "31 is Legendary");
+            Assert.Equal(("Epic", (int?)24), PresenceFormatter.TierAndLevel(gs with { EpicSide = true, QuestLevelEpic = 24 }), "24 is Epic");
+            Assert.Equal(((string?)null, (int?)null), PresenceFormatter.TierAndLevel(gs with { EpicSide = null }), "side unknown: nothing added");
+            Assert.Equal("Heroic Elite (L10)", PresenceFormatter.TierDifficultyText("Heroic", "Elite", 10, false), "short");
+            Assert.Equal("Heroic Elite, quest level 10", PresenceFormatter.TierDifficultyText("Heroic", "Elite", 10, true), "long");
+            Assert.Equal("Legendary Reaper 1 (L31)", PresenceFormatter.TierDifficultyText("Legendary", "Reaper 1", 31, false), "reaper");
+            Assert.Equal("Elite", PresenceFormatter.TierDifficultyText(null, "Elite", null, false), "difficulty alone, as before");
+            Assert.Equal("Heroic (L10)", PresenceFormatter.TierDifficultyText("Heroic", null, 10, false), "tier without a difficulty");
+            Assert.Equal((string?)null, PresenceFormatter.TierDifficultyText(null, null, 10, false), "a level alone is not shown");
         }
 
         [Test]

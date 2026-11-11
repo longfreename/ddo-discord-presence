@@ -23,6 +23,9 @@ namespace DdoDiscordPresence.Game
         public const uint Prop_Character_TotalLevel = 0x10001585u;
         /// <summary>Dungeon_DifficultyLevel (0x10001BC5), UInt32. [HYP] DifficultyType value of the current instance.</summary>
         public const uint Prop_Dungeon_DifficultyLevel = 0x10001BC5u;
+        /// <summary>On the quest's record: its base level per side and which sides it has (read live 2026-11-11).</summary>
+        public const uint Prop_Quest_CR_Normal = 268441941u, Prop_Quest_CR_Epic = 268453727u,
+            Prop_Quest_HasEpicDifficulty = 268453729u, Prop_Quest_HasHeroicDifficulty = 268464983u;
         /// <summary>Dungeon_CachedDifficulty (0x10001CB9), PropertyId: names a difficulty property (seen live 2026-11-11).</summary>
         public const uint Prop_Dungeon_CachedDifficulty = 0x10001CB9u;
         /// <summary>CachedDungeonDifficulty (0x10009A62), Enum. [HYP]</summary>
@@ -33,7 +36,7 @@ namespace DdoDiscordPresence.Game
         public const uint Prop_Dungeon_CachedReaperLevel = 0x1000A6AFu;
 
         /// <summary>Reads everything the presence may use. Never throws.</summary>
-        public static (GameSnapshot Snapshot, GameDiagnostics Diag) Read(IDdoGameDataProvider? p)
+        public static (GameSnapshot Snapshot, GameDiagnostics Diag) Read(IDdoGameDataProvider? p, uint? portalDifficulty = null)
         {
             var d = new GameDiagnostics();
             if (p == null) return (GameSnapshot.LoggedOut, d);
@@ -98,7 +101,22 @@ namespace DdoDiscordPresence.Game
             }
             catch { }
 
-            var (difficulty, skulls) = ReadDifficulty(p, me, d);
+            var (difficulty, skulls) = ReadDifficulty(p, me, d, portalDifficulty);
+            int? levelHeroic = null, levelEpic = null;
+            if (instanceQuest != 0)
+            {
+                try
+                {
+                    var quest = p.PropertyMaster?.GetPropertyCollection(instanceQuest);
+                    levelHeroic = ReadIntFrom(quest, Prop_Quest_CR_Normal);
+                    levelEpic = ReadIntFrom(quest, Prop_Quest_CR_Epic);
+                    bool hasEpic = (quest?.GetBytePropertyValue(Prop_Quest_HasEpicDifficulty) ?? 0) != 0;
+                    bool hasHeroic = (quest?.GetBytePropertyValue(Prop_Quest_HasHeroicDifficulty) ?? 0) != 0;
+                    // A quest with only one side settles it without any monster or panel.
+                    if (d.EpicSide == null && hasEpic != hasHeroic) d.EpicSide = hasEpic;
+                }
+                catch { }
+            }
 
             var snap = new GameSnapshot
             {
@@ -114,6 +132,9 @@ namespace DdoDiscordPresence.Game
                 PartySize = party,
                 Difficulty = difficulty,
                 ReaperSkulls = skulls,
+                EpicSide = d.EpicSide,
+                QuestLevelHeroic = levelHeroic is int lh && lh >= 1 && lh <= 60 ? lh : (int?)null,
+                QuestLevelEpic = levelEpic is int le && le >= 1 && le <= 60 ? le : (int?)null,
             };
             return (snap, d);
         }
@@ -123,38 +144,89 @@ namespace DdoDiscordPresence.Game
         /// the current character", new in SDK 4.3) is read first, then the character's own properties. A value is used
         /// only when it maps to a known VoK.Sdk.Ddo.Enums.DifficultyType; otherwise the difficulty is left out.
         /// </summary>
-        private static (Difficulty, int?) ReadDifficulty(IDdoGameDataProvider p, IEntity? me, GameDiagnostics d)
+        private static (Difficulty, int?) ReadDifficulty(IDdoGameDataProvider p, IEntity? me, GameDiagnostics d, uint? portalDifficulty)
         {
+            d.PortalDifficulty = portalDifficulty;
+            // The reaper level lives on the character and is live (1 in a Reaper 1 run, 0 in an Elite one).
+            int? skulls = null;
+            IPropertyCollection? mine = null;
+            try { mine = me?.PropertyCollection; } catch { }
             IPropertyCollection? vol = null;
             try { vol = p.VolumeProperties; } catch { }
-            var sources = new List<(string Name, IPropertyCollection? Coll)> { ("volume", vol) };
-            try { sources.Add(("character", me?.PropertyCollection)); } catch { }
-            foreach (var (name, coll) in sources)
+            foreach (var coll in new[] { mine, vol })
             {
-                if (coll == null) continue;
-                // The character's cached difficulty is the ID of a difficulty property; the others, where present, are
-                // DifficultyType numbers. The reaper level is read in every case and decides on its own.
-                uint? named = null;
-                try { named = coll.GetPropertyIdProperty(Prop_Dungeon_CachedDifficulty)?.UInt32Value; } catch { }
-                uint? raw = null;
-                foreach (var id in new[] { Prop_Dungeon_DifficultyLevel, Prop_CachedDungeonDifficulty })
-                {
-                    raw = ReadUInt(coll, id);
-                    if (raw.HasValue) break;
-                }
-                int? skulls = null;
+                if (skulls.HasValue) break;
                 foreach (var id in new[] { Prop_Dungeon_ReaperLevel, Prop_Dungeon_CachedReaperLevel })
                 {
                     var r = ReadIntFrom(coll, id);
                     if (r.HasValue) { skulls = r; break; }
                 }
-                if (!named.HasValue && !raw.HasValue && !skulls.HasValue) continue;
-                var verdict = DifficultyMap.Resolve(named, raw, skulls);
-                d.DifficultySource = name; d.DifficultyRaw = named ?? raw; d.ReaperRaw = skulls;
-                if (verdict.Difficulty == Difficulty.Unknown) continue;
-                return verdict;
             }
-            return (Difficulty.Unknown, null);
+            d.ReaperRaw = skulls;
+
+            // A DifficultyType number, should a client ever carry one (none seen so far).
+            uint? raw = null;
+            foreach (var coll in new[] { vol, mine })
+            {
+                if (coll == null || raw.HasValue) continue;
+                foreach (var id in new[] { Prop_Dungeon_DifficultyLevel, Prop_CachedDungeonDifficulty })
+                {
+                    raw = ReadUInt(coll, id);
+                    if (raw.HasValue) break;
+                }
+            }
+
+            var variants = MonsterVariants(p, d);
+            var (monsters, certain) = DifficultyMap.FromMonsterVariants(variants);
+            d.EpicSide = DifficultyMap.EpicSideFromMonsters(variants)
+                ?? (portalDifficulty.HasValue ? DifficultyMap.IsEpicProperty(portalDifficulty.Value) : null);
+            d.MonsterDifficulty = monsters; d.MonsterDifficultyCertain = certain;
+
+            var verdict = DifficultyMap.Decide(portalDifficulty, raw, skulls, monsters, certain);
+            d.DifficultyRaw = portalDifficulty ?? raw;
+            d.DifficultySource = verdict.Difficulty == Difficulty.Unknown ? "none"
+                : verdict.Difficulty == Difficulty.Reaper && skulls is int s && s >= 1 ? "reaper level"
+                : monsters != Difficulty.Unknown && verdict.Difficulty == monsters && (certain || !portalDifficulty.HasValue) ? "monsters"
+                : portalDifficulty.HasValue ? "entry panel" : "number";
+            return verdict;
+        }
+
+        /// <summary>
+        /// For up to 40 creatures nearby: the record id each one is, and the record ids it lists per difficulty.
+        /// Anything that carries no such rows (players, hirelings, scenery, items) is skipped.
+        /// </summary>
+        private static List<(uint, IReadOnlyDictionary<uint, uint>)> MonsterVariants(IDdoGameDataProvider p, GameDiagnostics d)
+        {
+            var list = new List<(uint, IReadOnlyDictionary<uint, uint>)>();
+            try
+            {
+                var all = p.GetEntities();
+                if (all == null) return list;
+                foreach (var e in all)
+                {
+                    if (list.Count >= 40) break;
+                    try
+                    {
+                        if (e == null || e.IsDeleted) continue;
+                        if (BitConverter.GetBytes(e.InstanceId)[7] != 3) continue;      // 3 = npc / monster
+                        uint record = Convert.ToUInt32((object?)e.WeenieId ?? 0u);
+                        if (record == 0) continue;
+                        var rows = new Dictionary<uint, uint>();
+                        foreach (var coll in new[] { e.PropertyCollection, e.WeeniePropertyCollection })
+                        {
+                            var props = coll?.Properties;
+                            if (props == null) continue;
+                            foreach (var (prop, _) in DifficultyMap.VariantRows)
+                                if (!rows.ContainsKey(prop) && props.TryGetValue(prop, out var row) && row != null) rows[prop] = row.RawUInt32;
+                        }
+                        if (rows.Count > 0) list.Add((record, rows));
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+            d.MonstersRead = list.Count;
+            return list;
         }
 
         /// <summary>VoK.Sdk.Ddo.Enums.DifficultyType value to the displayed difficulty (Epic variants fold in).</summary>
