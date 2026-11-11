@@ -1,7 +1,7 @@
 # Terms of Use
 
 **DDO Discord Presence** (the "plugin") and the Discord application it uses (the "app").
-Last updated: 2026-11-10.
+Last updated: 2026-11-11.
 
 These terms are short on purpose. If you do not agree with them, do not use the plugin or the app.
 
@@ -9,6 +9,9 @@ These terms are short on purpose. If you do not agree with them, do not use the 
 
 A free, unofficial fan-made add-on for Dungeon Helper. While you play *Dungeons & Dragons Online*, it
 shows the quest or area you are in as your Discord status. That is all it does.
+
+It only **reads** what the game already shows you. It does not press keys, move your character, click,
+cast, loot or play for you, attended or unattended, and it changes nothing in the game.
 
 ## 2. Not affiliated with anyone
 
@@ -24,6 +27,12 @@ or implied, including fitness for a particular purpose, accuracy, availability a
 
 You use them entirely at your own risk. In particular:
 
+- **Dungeon Helper's own position applies here too.** Dungeon Helper is not affiliated with or endorsed by
+  the game's publisher, and its authors say that it and its plugins are used at your own risk and that any
+  issue with the game's rules comes from what an individual plugin does. This plugin is a community plugin,
+  not an official or bundled one: it has not been reviewed or approved by the Dungeon Helper team, and they
+  are not responsible for it. Dungeon Helper's own privacy policy covers Dungeon Helper, not this plugin;
+  this plugin's is [PRIVACY.md](PRIVACY.md).
 - **Your accounts are your responsibility.** You are responsible for following the terms of service and
   rules of the game, of Discord and of any other service you use. Third-party add-ons are used at the
   discretion of those services; if using one affects your account, that is between you and them.

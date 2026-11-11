@@ -1,5 +1,7 @@
 # DDO Discord Presence
 
+> **This plugin is for Dungeon Helper 4.**
+
 A Dungeon Helper plugin by **longfreename** that shows what you are doing in Dungeons & Dragons Online as your
 Discord status:
 
