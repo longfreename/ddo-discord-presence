@@ -134,3 +134,7 @@ one quest keeps it. Names that cannot be read cleanly are never sent.
 
 `win-x64\DdoDiscordPresence.dll` and `.deps.json` (the plugin), `README.md`, `INSTALL.txt`, `TERMS.md`,
 `PRIVACY.md`. Dungeon Helper provides everything else the plugin needs.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Use is also subject to [TERMS.md](TERMS.md).
