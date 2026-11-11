@@ -142,19 +142,8 @@ namespace DdoDiscordPresence.Presence
             }
             try
             {
-                var node = JsonNode.Parse(text, null, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
-                var cfg = JsonSerializer.Deserialize<PresenceConfig>(text, Options);
-                if (cfg == null || node is not JsonObject obj) throw new JsonException("empty settings");
-                string? warning = null;
-                // 0.1.x files (schema 1, or none) predate the first-run question: the player already chose, keep it.
-                if (cfg.SchemaVersion < 2 || !HasKey(obj, nameof(PresenceConfig.FirstRunAnswered))) cfg.FirstRunAnswered = true;
-                if (cfg.HasInvalidOverride)
-                {
-                    warning = "The settings file names an application id that is not valid; using the built-in one.";
-                    cfg.ApplicationId = "";
-                }
-                cfg.SchemaVersion = PresenceConfig.CurrentSchema;
-                return (cfg.Normalize(), warning);
+                var parsed = Parse(text);
+                return (parsed.Config, parsed.Warning);
             }
             catch (Exception ex) when (ex is JsonException || ex is NotSupportedException || ex is ArgumentException || ex is InvalidOperationException)
             {
@@ -170,6 +159,29 @@ namespace DdoDiscordPresence.Presence
                 return (safe, "The settings file was unreadable" + (moved != null ? " (kept as " + System.IO.Path.GetFileName(moved) + ")" : "")
                               + "; started with defaults and sharing OFF.");
             }
+        }
+
+        /// <summary>
+        /// Reads settings text without touching any file. Throws (JsonException and the like) when the text is not a
+        /// settings object. <c>ExplicitFirstRunAnswer</c> is true only when the text itself carries a first-run answer
+        /// (schema 2 with the FirstRunAnswered key set), as opposed to an older file where the answer is assumed.
+        /// </summary>
+        internal static (PresenceConfig Config, string? Warning, bool ExplicitFirstRunAnswer) Parse(string text)
+        {
+            var node = JsonNode.Parse(text, null, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+            var cfg = JsonSerializer.Deserialize<PresenceConfig>(text, Options);
+            if (cfg == null || node is not JsonObject obj) throw new JsonException("empty settings");
+            string? warning = null;
+            var explicitAnswer = cfg.SchemaVersion >= 2 && HasKey(obj, nameof(PresenceConfig.FirstRunAnswered)) && cfg.FirstRunAnswered;
+            // 0.1.x files (schema 1, or none) predate the first-run question: the player already chose, keep it.
+            if (cfg.SchemaVersion < 2 || !HasKey(obj, nameof(PresenceConfig.FirstRunAnswered))) cfg.FirstRunAnswered = true;
+            if (cfg.HasInvalidOverride)
+            {
+                warning = "The settings file names an application id that is not valid; using the built-in one.";
+                cfg.ApplicationId = "";
+            }
+            cfg.SchemaVersion = PresenceConfig.CurrentSchema;
+            return (cfg.Normalize(), warning, explicitAnswer);
         }
 
         private static bool HasKey(JsonObject o, string name)

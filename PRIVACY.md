@@ -1,7 +1,7 @@
 # Privacy
 
 **DDO Discord Presence** (the "plugin") and the Discord application it uses (the "app").
-Last updated: 2026-11-10 (version 0.2.0).
+Last updated: 2026-11-11 (version 0.2.0).
 
 ## The short version
 

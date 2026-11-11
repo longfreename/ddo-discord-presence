@@ -19,7 +19,7 @@ switched off. Nothing is shared until you say so.
 
 ## Install
 
-Download `DdoDiscordPresence_0.2.0.zip` from this repository's **Releases** page (a copy is also in `dist/`).
+Download the latest zip: **[DdoDiscordPresence_0.2.0.zip](https://github.com/longfreename/ddo-discord-presence/releases/latest/download/DdoDiscordPresence_0.2.0.zip)** (from the [latest release](https://github.com/longfreename/ddo-discord-presence/releases/latest); the same file is in [`dist/`](dist/DdoDiscordPresence_0.2.0.zip)).
 
 1. In Dungeon Helper, use **Install plugin** and pick `DdoDiscordPresence_<version>.zip`.
    Or by hand: close Dungeon Helper and copy the zip's `plugins\DdoDiscordPresence` folder into

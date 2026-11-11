@@ -52,6 +52,8 @@ namespace DdoDiscordPresence.Tests
             Assert.Equal(4, snap.ReaperSkulls, "skulls");
             Assert.Equal("volume", diag.DifficultySource, "source");
             g.VolumeDifficulty = 204;   // "Blank": not a quest difficulty
+            Assert.Equal(Difficulty.Reaper, GameReader.Read(g.Provider()).Snapshot.Difficulty, "a reaper level decides on its own");
+            g.VolumeReaper = 0;
             Assert.Equal(Difficulty.Unknown, GameReader.Read(g.Provider()).Snapshot.Difficulty, "unknown values are left out");
             g.VolumeDifficulty = null;
             Assert.Equal(Difficulty.Unknown, GameReader.Read(g.Provider()).Snapshot.Difficulty, "absent");
@@ -67,6 +69,17 @@ namespace DdoDiscordPresence.Tests
             Assert.Equal(Difficulty.Reaper, GameReader.MapDifficulty(12), "Epic_Reaper");
             Assert.Equal(Difficulty.Unknown, GameReader.MapDifficulty(4), "EliteFinished");
             Assert.Equal(Difficulty.Unknown, GameReader.MapDifficulty(uint.MaxValue), "Invalid");
+            // Seen live 2026-11-11 in a Reaper 1 quest: cached difficulty names Dungeon_EasyDifficulty, reaper level 1.
+            Assert.Equal((Difficulty.Reaper, (int?)1), DifficultyMap.Resolve(268442566u, null, 1), "reaper level decides");
+            Assert.Equal((Difficulty.Normal, (int?)null), DifficultyMap.Resolve(268442566u, null, 0), "Easy is Normal");
+            Assert.Equal((Difficulty.Hard, (int?)null), DifficultyMap.Resolve(268442564u, null, null), "Medium is Hard");
+            Assert.Equal((Difficulty.Elite, (int?)null), DifficultyMap.Resolve(268442567u, null, null), "Hard is Elite");
+            Assert.Equal((Difficulty.Elite, (int?)null), DifficultyMap.Resolve(268460946u, null, 0), "Epic Elite");
+            Assert.Equal((Difficulty.Casual, (int?)null), DifficultyMap.Resolve(268454990u, null, null), "Casual");
+            Assert.Equal((Difficulty.Reaper, (int?)null), DifficultyMap.Resolve(268477892u, null, null), "Reaper, skulls unknown");
+            Assert.Equal((Difficulty.Reaper, (int?)null), DifficultyMap.Resolve(268477892u, null, 11), "skulls out of range are left out");
+            Assert.Equal((Difficulty.Hard, (int?)null), DifficultyMap.Resolve(null, 2, null), "falls back to the DifficultyType number");
+            Assert.Equal((Difficulty.Unknown, (int?)null), DifficultyMap.Resolve(12345u, null, null), "unknown stays unknown");
         }
 
         [Test]

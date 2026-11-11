@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using DdoDiscordPresence.Presence;
 using VoK.Sdk;
@@ -9,38 +8,6 @@ using VoK.Sdk.Properties;
 
 namespace DdoDiscordPresence.Game
 {
-    /// <summary>Raw readings behind a snapshot, shown in the settings window's diagnostics so the owner can check them.</summary>
-    internal sealed class GameDiagnostics
-    {
-        public ulong CharacterId;
-        public bool? InTown;
-        public uint InstanceQuestDid;
-        public uint JournalQuestDid;
-        public uint AreaDid;
-        public bool MapValid;
-        public string? QuestNameRaw;
-        public string? AreaNameRaw;
-        public string DifficultySource = "none";
-        public uint? DifficultyRaw;
-        public int? ReaperRaw;
-        public int? LevelRaw;
-        public string? ClassesRaw;
-        public int? PartyListCount;
-
-        public override string ToString() => string.Join("  ", new[]
-        {
-            $"char {(CharacterId != 0 ? "yes" : "none")}",
-            $"InTown={Fmt(InTown)}",
-            $"instance quest 0x{InstanceQuestDid:X8} ({QuestNameRaw ?? "no name"})",
-            $"journal quest 0x{JournalQuestDid:X8}",
-            $"area 0x{AreaDid:X8} ({AreaNameRaw ?? "no name"}){(MapValid ? "" : " map not valid")}",
-            $"difficulty {DifficultySource}={Fmt(DifficultyRaw)} reaper={Fmt(ReaperRaw)}",
-            $"level={Fmt(LevelRaw)} classes={ClassesRaw ?? "-"} party list={Fmt(PartyListCount)}",
-        });
-
-        private static string Fmt<T>(T? v) where T : struct => v.HasValue ? Convert.ToString(v.Value, CultureInfo.InvariantCulture) ?? "-" : "-";
-    }
-
     /// <summary>
     /// The only class that reads the game (besides Plugin's event wiring). Every SDK call is wrapped: a member that throws
     /// or returns nothing just leaves that field unknown, and unknown fields are left out of the presence.
@@ -48,21 +15,21 @@ namespace DdoDiscordPresence.Game
     internal static class GameReader
     {
         // DdoProperty ids, from the VoK.Sdk 4.3.2 XML documentation (VoK.Sdk.Enums.DdoProperty).
-        /// <summary>Quest_Name (0x1000030B), StringInfo; verified by Hireling Commander (GameHelpers.QuestName).</summary>
-        public const uint Prop_Quest_Name = 0x1000030Bu;
+        /// <summary>Quest_Name (0x1000016B = 268435819), StringInfo; the same id Hireling Commander reads (GameHelpers.QuestName).</summary>
+        public const uint Prop_Quest_Name = 0x1000016Bu;
         /// <summary>Area_Name (0x00000643), StringInfo on the 0x70 area definition (the client's area records carry it, e.g. "The Pit").</summary>
         public const uint Prop_Area_Name = 0x00000643u;
         /// <summary>Character_TotalLevel (268440965), Int32; verified live by Hireling Commander (= 15 on a level 15 character).</summary>
         public const uint Prop_Character_TotalLevel = 0x10001585u;
         /// <summary>Dungeon_DifficultyLevel (0x10001BC5), UInt32. [HYP] DifficultyType value of the current instance.</summary>
         public const uint Prop_Dungeon_DifficultyLevel = 0x10001BC5u;
-        /// <summary>Dungeon_CachedDifficulty (0x10001CB9), UInt32. [HYP]</summary>
+        /// <summary>Dungeon_CachedDifficulty (0x10001CB9), PropertyId: names a difficulty property (seen live 2026-11-11).</summary>
         public const uint Prop_Dungeon_CachedDifficulty = 0x10001CB9u;
         /// <summary>CachedDungeonDifficulty (0x10009A62), Enum. [HYP]</summary>
         public const uint Prop_CachedDungeonDifficulty = 0x10009A62u;
         /// <summary>Dungeon_ReaperLevel (0x1000A6AC), Int32. [HYP] reaper skulls of the instance.</summary>
         public const uint Prop_Dungeon_ReaperLevel = 0x1000A6ACu;
-        /// <summary>Dungeon_CachedReaperLevel (0x1000A6AF), Int32. [HYP]</summary>
+        /// <summary>Dungeon_CachedReaperLevel (0x1000A6AF), Int32: reaper skulls (read 1 in a Reaper 1 quest, 2026-11-11).</summary>
         public const uint Prop_Dungeon_CachedReaperLevel = 0x1000A6AFu;
 
         /// <summary>Reads everything the presence may use. Never throws.</summary>
@@ -165,43 +132,33 @@ namespace DdoDiscordPresence.Game
             foreach (var (name, coll) in sources)
             {
                 if (coll == null) continue;
+                // The character's cached difficulty is the ID of a difficulty property; the others, where present, are
+                // DifficultyType numbers. The reaper level is read in every case and decides on its own.
+                uint? named = null;
+                try { named = coll.GetPropertyIdProperty(Prop_Dungeon_CachedDifficulty)?.UInt32Value; } catch { }
                 uint? raw = null;
-                foreach (var id in new[] { Prop_Dungeon_DifficultyLevel, Prop_CachedDungeonDifficulty, Prop_Dungeon_CachedDifficulty })
+                foreach (var id in new[] { Prop_Dungeon_DifficultyLevel, Prop_CachedDungeonDifficulty })
                 {
                     raw = ReadUInt(coll, id);
                     if (raw.HasValue) break;
                 }
-                if (!raw.HasValue) continue;
-                var diff = MapDifficulty(raw.Value);
-                d.DifficultySource = name; d.DifficultyRaw = raw;
                 int? skulls = null;
                 foreach (var id in new[] { Prop_Dungeon_ReaperLevel, Prop_Dungeon_CachedReaperLevel })
                 {
                     var r = ReadIntFrom(coll, id);
                     if (r.HasValue) { skulls = r; break; }
                 }
-                d.ReaperRaw = skulls;
-                if (diff == Difficulty.Unknown) continue;
-                return (diff, diff == Difficulty.Reaper && skulls is int s && s >= 1 && s <= 10 ? s : (int?)null);
+                if (!named.HasValue && !raw.HasValue && !skulls.HasValue) continue;
+                var verdict = DifficultyMap.Resolve(named, raw, skulls);
+                d.DifficultySource = name; d.DifficultyRaw = named ?? raw; d.ReaperRaw = skulls;
+                if (verdict.Difficulty == Difficulty.Unknown) continue;
+                return verdict;
             }
             return (Difficulty.Unknown, null);
         }
 
         /// <summary>VoK.Sdk.Ddo.Enums.DifficultyType value to the displayed difficulty (Epic variants fold in).</summary>
-        public static Difficulty MapDifficulty(uint raw) => raw switch
-        {
-            0 => Difficulty.Solo,
-            1 => Difficulty.Normal,
-            2 => Difficulty.Hard,
-            3 => Difficulty.Elite,
-            7 => Difficulty.Casual,
-            8 => Difficulty.Casual,     // Epic_Casual
-            9 => Difficulty.Hard,       // Epic_Hard
-            10 => Difficulty.Elite,     // Epic_Elite
-            11 => Difficulty.Reaper,
-            12 => Difficulty.Reaper,    // Epic_Reaper
-            _ => Difficulty.Unknown,    // 4 EliteFinished, 5 Epic (no tier), 200+ item rarities, unknown
-        };
+        public static Difficulty MapDifficulty(uint raw) => DifficultyMap.FromDifficultyType(raw);
 
         /// <summary>A 0x70 definition's StringInfo text through the client's property master (Hireling Commander's QuestName technique).</summary>
         internal static string? StringInfo(IGameDataProvider p, uint did, uint propertyId)

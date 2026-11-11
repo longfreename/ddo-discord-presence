@@ -292,37 +292,11 @@ namespace DdoDiscordPresence
         internal void AnswerFirstRun(bool turnOn) => UpdateConfig(c => { c.FirstRunAnswered = true; c.Enabled = turnOn; });
 
         /// <summary>The status line: settings first (off / paused), then the Discord connection or the client that holds it.</summary>
-        internal (PresenceStatusKind Kind, string Text) StatusLine()
-        {
-            var c = Config;
-            if (c.NeedsFirstRunAnswer) return (PresenceStatusKind.Off, "Not sharing yet: choose below");
-            if (!c.Enabled) return (PresenceStatusKind.Off, "Off: sharing is turned off");
-            var v = View;
-            var s = _service?.Status ?? new PresenceStatus(PresenceStatusKind.Error, "Error: not started");
-            string text; var kind = s.Kind;
-            if (!Snapshot.LoggedIn && !v.IsLeader) { kind = PresenceStatusKind.Off; text = "Waiting for a character to log in"; }
-            else if (!v.IsLeader && v.LeaderId != null)
-            {
-                kind = PresenceStatusKind.Delegated;
-                text = "Shown by another game client" + (string.IsNullOrEmpty(v.LeaderStatus) ? "" : " (" + v.LeaderStatus + ")");
-            }
-            else if (!v.IsLeader && kind != PresenceStatusKind.Error) { kind = PresenceStatusKind.Connecting; text = "Starting..."; }
-            else text = s.Text;
-            if (c.Paused) return (kind, "Paused (nothing shown). " + text);
-            return (kind, text);
-        }
+        internal (PresenceStatusKind Kind, string Text) StatusLine() =>
+            PresenceStatusText.StatusLine(Config, View, _service?.Status, Snapshot.LoggedIn);
 
         /// <summary>The sample the Test button sends for 20 seconds.</summary>
-        internal static PresenceActivity SampleActivity(PresenceConfig c, DateTime nowUtc) => new PresenceActivity
-        {
-            Details = "The Sharn Syndicate",
-            State = "Test" + PresenceFormatter.Separator + "Level 12 Paladin" + PresenceFormatter.Separator + "Elite",
-            StartUnixSeconds = new DateTimeOffset(nowUtc).ToUnixTimeSeconds(),
-            LargeImageKey = PresenceConfig.IsValidAssetKey(c.LargeImageKey) ? c.LargeImageKey : PresenceFormatter.DefaultLargeImageKey,
-            LargeText = PresenceFormatter.GameTitle,
-            SmallImageKey = c.ShowDifficultyBadge ? "elite" : null,
-            SmallText = c.ShowDifficultyBadge ? "Elite" : null,
-        };
+        internal static PresenceActivity SampleActivity(PresenceConfig c, DateTime nowUtc) => PresenceStatusText.SampleActivity(c, nowUtc);
 
         internal Task<string> TestAsync()
         {
