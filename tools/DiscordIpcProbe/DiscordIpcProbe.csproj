@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Live smoke test against the local Discord client's pipe. Compiles the plugin's own IPC files, so it exercises
+       exactly the shipped framing and handshake code. Not part of the plugin package. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>DiscordIpcProbe</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\DdoDiscordPresence\Discord\IpcCodec.cs" Link="Shared\IpcCodec.cs" />
+    <Compile Include="..\..\src\DdoDiscordPresence\Discord\Infrastructure.cs" Link="Shared\Infrastructure.cs" />
+    <Compile Include="..\..\src\DdoDiscordPresence\Discord\DiscordRpcConnection.cs" Link="Shared\DiscordRpcConnection.cs" />
+  </ItemGroup>
+</Project>

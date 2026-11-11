@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <Version>0.2.0</Version>
+    <Product>DDO Discord Presence</Product>
+    <AssemblyTitle>DDO Discord Presence</AssemblyTitle>
+    <Description>Shows your current Dungeons &amp; Dragons Online quest or area as your Discord status (a Dungeon Helper plugin).</Description>
+    <AssemblyName>DdoDiscordPresence</AssemblyName>
+    <RootNamespace>DdoDiscordPresence</RootNamespace>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="DdoDiscordPresence.Tests" />
+    <InternalsVisibleTo Include="AssetExport" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same SDK pin as Hireling Commander (VoK.Sdk 4.3.2, shipped with Dungeon Helper 4.3.3). Host-provided: never shipped. -->
+    <PackageReference Include="VoK.Sdk" Version="4.3.2" />
+    <!-- Pinned to the host's log4net (2.0.17). VoK.Sdk pulls 2.0.15 transitively; a stray older copy beside the plugin
+         creates a second, unconfigured logger that swallows every log line. build.ps1 strips it from the package. -->
+    <PackageReference Include="log4net" Version="2.0.17" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The advisory concerns log4net's XML configuration loading. The plugin never configures log4net or ships it:
+         Dungeon Helper's own copy is used, so the pin must match the host rather than move to a newer version. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-4f7c-pmjv-c25w" />
+  </ItemGroup>
+
+</Project>
